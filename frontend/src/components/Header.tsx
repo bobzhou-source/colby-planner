@@ -8,18 +8,29 @@ export default function Header() {
   const program = data?.programs.find(p => p.id === plan?.program_id);
   const secondary = plan?.secondary_program_id ? data?.programs.find(p => p.id === plan.secondary_program_id) : null;
 
-  const isCreditMajor = program?.total.unit === 'credit_hours';
-  const totalValue = plan ? Object.values(plan.years).reduce((sum, year) => {
+  const totalCourses = plan ? Object.values(plan.years).reduce((sum, year) => {
+    return sum + year.fall.length + year.jan.length + year.spring.length;
+  }, 0) : 0;
+  const totalCredits = plan ? Object.values(plan.years).reduce((sum, year) => {
     const allCourses = [...year.fall, ...year.jan, ...year.spring];
-    if (isCreditMajor) {
-      return sum + allCourses.reduce((c, id) => c + (data?.catalog.courses[id]?.credits || 0), 0);
-    }
-    return sum + allCourses.length;
+    return sum + allCourses.reduce((c, id) => c + (data?.catalog.courses[id]?.credits || 0), 0);
   }, 0) : 0;
 
-  const target = program?.total.count || 0;
-  const unit = isCreditMajor ? 'cr' : 'courses';
-  const progress = target > 0 ? Math.min(100, (totalValue / target) * 100) : 0;
+  const primaryUnit = program?.total.unit;
+  const primaryTarget = program?.total.count || 0;
+  const primaryProgress = primaryTarget > 0 && primaryUnit === 'credit_hours'
+    ? Math.min(100, (totalCredits / primaryTarget) * 100)
+    : primaryTarget > 0 && primaryUnit === 'courses'
+    ? Math.min(100, (totalCourses / primaryTarget) * 100)
+    : 0;
+
+  const secUnit = secondary?.total.unit;
+  const secTarget = secondary?.total.count || 0;
+  const secProgress = secTarget > 0 && secUnit === 'credit_hours'
+    ? Math.min(100, (totalCredits / secTarget) * 100)
+    : secTarget > 0 && secUnit === 'courses'
+    ? Math.min(100, (totalCourses / secTarget) * 100)
+    : 0;
 
   function handleShare() {
     if (!plan) return;
@@ -77,15 +88,33 @@ export default function Header() {
       )}
 
       <div className="flex-1 flex items-center gap-3 min-w-0">
-        <div className="flex-1 max-w-xs h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
+        {/* Primary program progress */}
+        <div className="flex-1 max-w-[140px]">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[10px] text-gray-400 truncate">{program?.name?.replace(/ Major| Minor/g, '')}</span>
+            <span className="text-[10px] text-gray-500">
+              {primaryUnit === 'credit_hours' ? `${Math.round(totalCredits)}/${primaryTarget} cr` : `${totalCourses}/${primaryTarget}`}
+            </span>
+          </div>
+          <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${primaryProgress}%` }} />
+          </div>
         </div>
-        <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
-          {Math.round(totalValue)} / {target} {unit}
-        </span>
+
+        {/* Secondary program progress */}
+        {secondary && (
+          <div className="flex-1 max-w-[140px]">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-gray-400 truncate">{secondary.name?.replace(/ Major| Minor/g, '')}</span>
+              <span className="text-[10px] text-gray-500">
+                {secUnit === 'credit_hours' ? `${Math.round(totalCredits)}/${secTarget} cr` : `${totalCourses}/${secTarget}`}
+              </span>
+            </div>
+            <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${secProgress}%` }} />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
