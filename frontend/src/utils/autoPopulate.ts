@@ -251,40 +251,51 @@ export function autoPopulatePlan(
 
   for (const req of reqRules) {
     let slot: { year: number; term: string } | null = null;
+    const isJanPlanReq = req.name.toLowerCase().includes('jan');
 
-    // Prefer Fall/Spring, skip Jan Plan unless absolutely necessary
-    const mainTerms = ['fall', 'spring'];
-    for (let year = 1; year <= 4; year++) {
-      const candidates = mainTerms
-        .map(term => ({ term, load: totalLoad(year, term) }))
-        .filter(c => c.load < MAX_COURSES_PER_SEMESTER);
-
-      if (candidates.length > 0) {
-        const minLoad = Math.min(...candidates.map(c => c.load));
-        const tied = candidates.filter(c => c.load === minLoad);
-        const prefersSpring = (yearPlacementCount[year] + getReqLoad(year, 'fall') + getReqLoad(year, 'spring')) % 2 === 1;
-        tied.sort((a, b) => {
-          const aIsSpring = a.term === 'spring' ? 1 : 0;
-          const bIsSpring = b.term === 'spring' ? 1 : 0;
-          if (prefersSpring) return bIsSpring - aIsSpring;
-          return aIsSpring - bIsSpring;
-        });
-
-        slot = { year, term: tied[0].term };
-        break;
-      }
-    }
-
-    // Overflow: try Jan Plan if Fall/Spring are full
-    if (!slot) {
+    if (isJanPlanReq) {
+      // Jan Plan requirements go specifically into Jan Plan
       for (let year = 1; year <= 4; year++) {
-        for (const term of TERM_ORDER) {
-          if (totalLoad(year, term) < MAX_COURSES_PER_SEMESTER + 2) {
-            slot = { year, term };
-            break;
-          }
+        if (totalLoad(year, 'jan') < MAX_COURSES_PER_SEMESTER) {
+          slot = { year, term: 'jan' };
+          break;
         }
-        if (slot) break;
+      }
+    } else {
+      // Prefer Fall/Spring, skip Jan Plan unless absolutely necessary
+      const mainTerms = ['fall', 'spring'];
+      for (let year = 1; year <= 4; year++) {
+        const candidates = mainTerms
+          .map(term => ({ term, load: totalLoad(year, term) }))
+          .filter(c => c.load < MAX_COURSES_PER_SEMESTER);
+
+        if (candidates.length > 0) {
+          const minLoad = Math.min(...candidates.map(c => c.load));
+          const tied = candidates.filter(c => c.load === minLoad);
+          const prefersSpring = (yearPlacementCount[year] + getReqLoad(year, 'fall') + getReqLoad(year, 'spring')) % 2 === 1;
+          tied.sort((a, b) => {
+            const aIsSpring = a.term === 'spring' ? 1 : 0;
+            const bIsSpring = b.term === 'spring' ? 1 : 0;
+            if (prefersSpring) return bIsSpring - aIsSpring;
+            return aIsSpring - bIsSpring;
+          });
+
+          slot = { year, term: tied[0].term };
+          break;
+        }
+      }
+
+      // Overflow: try Jan Plan if Fall/Spring are full
+      if (!slot) {
+        for (let year = 1; year <= 4; year++) {
+          for (const term of TERM_ORDER) {
+            if (totalLoad(year, term) < MAX_COURSES_PER_SEMESTER + 2) {
+              slot = { year, term };
+              break;
+            }
+          }
+          if (slot) break;
+        }
       }
     }
 
