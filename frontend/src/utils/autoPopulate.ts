@@ -239,21 +239,30 @@ export function autoPopulatePlan(
     }
   }
 
-  // Place requirement blocks using similar logic but no prereqs and no term restrictions
+  // Place requirement blocks evenly across Fall/Spring, skipping Jan Plan
+  // Track how many reqs are already placed in each (year, term)
+  const reqLoad: Record<string, number> = {};
+  function getReqLoad(year: number, term: string): number {
+    return reqLoad[`${year}-${term}`] || 0;
+  }
+  function totalLoad(year: number, term: string): number {
+    return countInSem(year, term) + getReqLoad(year, term);
+  }
+
   for (const req of reqRules) {
     let slot: { year: number; term: string } | null = null;
 
+    // Prefer Fall/Spring, skip Jan Plan unless absolutely necessary
+    const mainTerms = ['fall', 'spring'];
     for (let year = 1; year <= 4; year++) {
-      const candidates = TERM_ORDER
-        .map((term, idx) => ({ term, idx }))
-        .map(({ term }) => ({ term, load: countInSem(year, term) }))
+      const candidates = mainTerms
+        .map(term => ({ term, load: totalLoad(year, term) }))
         .filter(c => c.load < MAX_COURSES_PER_SEMESTER);
 
       if (candidates.length > 0) {
         const minLoad = Math.min(...candidates.map(c => c.load));
         const tied = candidates.filter(c => c.load === minLoad);
-        const yearCount = yearPlacementCount[year] || 0;
-        const prefersSpring = (yearCount % 2) === 1;
+        const prefersSpring = (yearPlacementCount[year] + getReqLoad(year, 'fall') + getReqLoad(year, 'spring')) % 2 === 1;
         tied.sort((a, b) => {
           const aIsSpring = a.term === 'spring' ? 1 : 0;
           const bIsSpring = b.term === 'spring' ? 1 : 0;
@@ -266,6 +275,19 @@ export function autoPopulatePlan(
       }
     }
 
+    // Overflow: try Jan Plan if Fall/Spring are full
+    if (!slot) {
+      for (let year = 1; year <= 4; year++) {
+        for (const term of TERM_ORDER) {
+          if (totalLoad(year, term) < MAX_COURSES_PER_SEMESTER + 2) {
+            slot = { year, term };
+            break;
+          }
+        }
+        if (slot) break;
+      }
+    }
+
     if (slot) {
       requirements.push({
         id: crypto.randomUUID(),
@@ -275,6 +297,7 @@ export function autoPopulatePlan(
         term: slot.term,
         qualifying_courses: req.qualifying,
       });
+      reqLoad[`${slot.year}-${slot.term}`] = (reqLoad[`${slot.year}-${slot.term}`] || 0) + 1;
       yearPlacementCount[slot.year] = (yearPlacementCount[slot.year] || 0) + 1;
     }
   }
