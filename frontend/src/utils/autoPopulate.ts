@@ -21,14 +21,6 @@ function getValidTerms(course: Course): string[] {
   return terms;
 }
 
-function pickDefaultCourse(pool: PoolItem[]): string | null {
-  for (const item of pool) {
-    if (item.type === 'course') return item.course_id;
-    if (item.type === 'sequence' && item.sequence.length > 0) return item.sequence[0];
-  }
-  return null;
-}
-
 function pickDefaultSequence(pool: PoolItem[]): string[] {
   for (const item of pool) {
     if (item.type === 'sequence') return item.sequence;
@@ -86,12 +78,23 @@ export function autoPopulatePlan(
       }
     } else if (rule.type === 'choice' && rule.pool) {
       const select = rule.select || 1;
-      for (let i = 0; i < select; i++) {
-        const cid = pickDefaultCourse(rule.pool.slice(i));
-        if (cid) {
-          const c = catalog[cid];
-          if (c) toPlace.push({ courseId: cid, level: getCourseLevel(c.number), terms: getValidTerms(c), prereqs: c.prerequisites });
+      let placed = 0;
+      for (const item of rule.pool) {
+        if (placed >= select) break;
+        if (item.type === 'course') {
+          const c = catalog[item.course_id];
+          if (c) {
+            toPlace.push({ courseId: item.course_id, level: getCourseLevel(c.number), terms: getValidTerms(c), prereqs: c.prerequisites });
+            placed++;
+          }
+        } else if (item.type === 'sequence') {
+          for (const cid of item.sequence) {
+            const c = catalog[cid];
+            if (c) toPlace.push({ courseId: cid, level: getCourseLevel(c.number), terms: getValidTerms(c), prereqs: c.prerequisites });
+          }
+          placed++;
         }
+        // Skip filter items
       }
     } else if (rule.type === 'sequence_choice' && rule.pool) {
       const seq = pickDefaultSequence(rule.pool);
