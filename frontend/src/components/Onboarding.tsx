@@ -254,45 +254,34 @@ export default function Onboarding({ onFinish, programs, catalog, onCreatePlans 
                         return pDept !== primaryDept;
                       });
                       const matches = findCompatiblePrograms(primaryProgram, eligiblePrograms);
-                      const top = matches.slice(0, 6);
+                      const top = matches
+                        .filter(m => !isLikelyForbidden(primaryProgram, m.program))
+                        .slice(0, 6);
                       if (top.length === 0) {
                         return <div className="text-xs text-gray-400">No strong overlaps found. You can still browse all programs.</div>;
                       }
-                      return top.map(m => {
-                        const forbidden = isLikelyForbidden(primaryProgram, m.program);
-                        return (
-                          <button
-                            key={m.program.id}
-                            onClick={() => {
-                              setSecondaryMajor(m.program.id);
-                              if (m.program.concentrations && m.program.concentrations.options.length > 0) {
-                                setStep('secondary_concentration');
-                              } else {
-                                finish(primaryMajor!, primaryConc, m.program.id, null);
-                              }
-                            }}
-                            disabled={forbidden}
-                            className={`w-full p-2.5 rounded-lg border-2 text-left transition-all ${
-                              forbidden
-                                ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
-                                : 'border-gray-200 hover:border-blue-300'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="font-semibold text-sm">
-                                {m.program.name}
-                                {forbidden && <span className="text-red-500 text-[10px] ml-1.5 font-bold">NOT ALLOWED</span>}
-                              </div>
-                              <div className="text-[11px] text-gray-400">
-                                {m.overlap} shared
-                              </div>
-                            </div>
-                            <div className="text-[11px] text-gray-500">
-                              {m.program.total.count} {m.program.total.unit === 'credit_hours' ? 'credits' : 'courses'}
-                            </div>
-                          </button>
-                        );
-                      });
+                      return top.map(m => (
+                        <button
+                          key={m.program.id}
+                          onClick={() => {
+                            setSecondaryMajor(m.program.id);
+                            if (m.program.concentrations && m.program.concentrations.options.length > 0) {
+                              setStep('secondary_concentration');
+                            } else {
+                              finish(primaryMajor!, primaryConc, m.program.id, null);
+                            }
+                          }}
+                          className="w-full p-2.5 rounded-lg border-2 border-gray-200 hover:border-blue-300 text-left transition-all"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-sm">{m.program.name}</div>
+                            <div className="text-[11px] text-gray-400">{m.overlap} shared</div>
+                          </div>
+                          <div className="text-[11px] text-gray-500">
+                            {m.program.total.count} {m.program.total.unit === 'credit_hours' ? 'credits' : 'courses'}
+                          </div>
+                        </button>
+                      ));
                     })()}
                   </div>
                 </div>

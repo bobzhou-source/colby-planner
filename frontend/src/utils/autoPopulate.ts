@@ -40,6 +40,54 @@ function getQualifyingCoursesForLevel(catalog: Record<string, Course>, level: nu
     .map(c => c.id);
 }
 
+function countAttributeInPlan(attribute: string, plan: YearPlan, catalog: Record<string, Course>): number {
+  let count = 0;
+  for (let year = 1; year <= 4; year++) {
+    const yk = `year${year}` as keyof YearPlan;
+    for (const term of TERM_ORDER) {
+      for (const courseId of (plan[yk] as any)[term]) {
+        const c = catalog[courseId];
+        if (c?.distributions.includes(attribute) || c?.attributes.includes(attribute)) count++;
+      }
+    }
+  }
+  return count;
+}
+
+function countLevelInPlan(level: number, plan: YearPlan, catalog: Record<string, Course>): number {
+  let count = 0;
+  for (let year = 1; year <= 4; year++) {
+    const yk = `year${year}` as keyof YearPlan;
+    for (const term of TERM_ORDER) {
+      for (const courseId of (plan[yk] as any)[term]) {
+        const c = catalog[courseId];
+        if (c && getCourseLevel(c.number) >= level) count++;
+      }
+    }
+  }
+  return count;
+}
+
+function tryMatchFilter(filter: Record<string, any>, catalog: Record<string, Course>): string | null {
+  for (const c of Object.values(catalog)) {
+    if (filter.subject && c.subject !== filter.subject) continue;
+    if (filter.departments && !filter.departments.includes(c.department.toLowerCase())) continue;
+    if (filter.level) {
+      const level = getCourseLevel(c.number);
+      if (Array.isArray(filter.level)) {
+        if (!filter.level.includes(level)) continue;
+      } else if (typeof filter.level === 'number') {
+        if (level !== filter.level) continue;
+      }
+    }
+    if (filter.level_min && getCourseLevel(c.number) < filter.level_min) continue;
+    if (filter.level_max && getCourseLevel(c.number) > filter.level_max) continue;
+    if (filter.minimum_level && getCourseLevel(c.number) < filter.minimum_level) continue;
+    return c.id;
+  }
+  return null;
+}
+
 export function autoPopulatePlan(
   program: Program,
   catalog: Record<string, Course>,
@@ -48,7 +96,6 @@ export function autoPopulatePlan(
   secondaryProgram?: Program,
 ): { years: YearPlan; requirements: RequirementBlock[] } {
   const plan: YearPlan = JSON.parse(JSON.stringify(EMPTY_YEAR_PLAN));
-  const placed = new Set<string>();
   const requirements: RequirementBlock[] = [];
 
   const allRules = [...program.rules];
@@ -93,8 +140,15 @@ export function autoPopulatePlan(
             if (c) toPlace.push({ courseId: cid, level: getCourseLevel(c.number), terms: getValidTerms(c), prereqs: c.prerequisites });
           }
           placed++;
+        } else if (item.type === 'filter') {
+          // Try to find a matching course for filter-based choices
+          const matched = tryMatchFilter(item.filter, catalog);
+          if (matched) {
+            const c = catalog[matched];
+            toPlace.push({ courseId: matched, level: getCourseLevel(c.number), terms: getValidTerms(c), prereqs: c.prerequisites });
+            placed++;
+          }
         }
-        // Skip filter items
       }
     } else if (rule.type === 'sequence_choice' && rule.pool) {
       const seq = pickDefaultSequence(rule.pool);
@@ -123,12 +177,16 @@ export function autoPopulatePlan(
     return bIsPrereq - aIsPrereq;
   });
 
-  // Track per-year placement count for alternation
+  // Track per-year placement count
   const yearPlacementCount: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
 
   function countInSem(year: number, term: string): number {
     const yk: keyof YearPlan = `year${year}` as keyof YearPlan;
     return plan[yk][term as keyof typeof plan['year1']].length;
+  }
+
+  function totalYearLoad(year: number): number {
+    return countInSem(year, 'fall') + countInSem(year, 'jan') + countInSem(year, 'spring');
   }
 
   // Place each course
@@ -155,10 +213,17 @@ export function autoPopulatePlan(
       }
     }
 
-    // Find all valid candidates in the target year (and beyond if needed)
+    // Find the best year to place this course, preferring less-loaded years
     let slot: { year: number; term: string } | null = null;
 
+    // Build candidate years sorted by total load
+    const candidateYears: { year: number; load: number }[] = [];
     for (let year = earliestYear; year <= 4; year++) {
+      candidateYears.push({ year, load: totalYearLoad(year) });
+    }
+    candidateYears.sort((a, b) => a.load - b.load);
+
+    for (const { year } of candidateYears) {
       const candidates = TERM_ORDER
         .map((term, idx) => ({ term, idx }))
         .filter(({ idx }) => !(year === earliestYear && idx < earliestTermIdx))
@@ -169,8 +234,6 @@ export function autoPopulatePlan(
       if (candidates.length > 0) {
         const minLoad = Math.min(...candidates.map(c => c.load));
         const tied = candidates.filter(c => c.load === minLoad);
-
-        // Tie-breaker: alternate Fall/Spring based on how many placed in this year so far
         const yearCount = yearPlacementCount[year] || 0;
         const prefersSpring = (yearCount % 2) === 1;
         tied.sort((a, b) => {
@@ -185,7 +248,7 @@ export function autoPopulatePlan(
       }
     }
 
-    // Overflow: stuff it anywhere valid
+    // Overflow
     if (!slot) {
       for (let year = earliestYear; year <= 4; year++) {
         for (const term of TERM_ORDER) {
@@ -208,46 +271,39 @@ export function autoPopulatePlan(
   }
 
   // --- Place requirement blocks for open-ended rules ---
-  const reqRules: { rule_id: string; name: string; count: number; qualifying: string[] }[] = [];
+  // First, collect all minimum_attribute/minimum_level rules
+  const reqRules: { rule_id: string; name: string; count: number; qualifying: string[]; alreadySatisfied: number }[] = [];
 
-  // Major rules
-  for (const rule of allRules) {
-    if (rule.type === 'minimum_attribute' && rule.attribute) {
-      const min = rule.minimum_count || 1;
-      const qualifying = getQualifyingCoursesForAttribute(catalog, rule.attribute);
-      if (qualifying.length > 5) {
-        for (let i = 0; i < min; i++) {
-          reqRules.push({ rule_id: rule.id, name: rule.name || rule.attribute, count: min, qualifying });
-        }
-      }
-    } else if (rule.type === 'minimum_level' && rule.level) {
-      const min = rule.minimum_count || 1;
-      const qualifying = getQualifyingCoursesForLevel(catalog, rule.level);
-      if (qualifying.length > 5) {
-        for (let i = 0; i < min; i++) {
-          reqRules.push({ rule_id: rule.id, name: `${rule.level}-level course`, count: min, qualifying });
-        }
-      }
-    }
-  }
-
-  // Graduation rules
-  if (graduationProgram) {
-    for (const rule of graduationProgram.rules) {
+  function addReqRules(rules: typeof allRules) {
+    for (const rule of rules) {
       if (rule.type === 'minimum_attribute' && rule.attribute) {
         const min = rule.minimum_count || 1;
+        const already = countAttributeInPlan(rule.attribute, plan, catalog);
         const qualifying = getQualifyingCoursesForAttribute(catalog, rule.attribute);
-        if (qualifying.length > 5) {
-          for (let i = 0; i < min; i++) {
-            reqRules.push({ rule_id: rule.id, name: rule.name || rule.attribute, count: min, qualifying });
+        if (qualifying.length > 5 && already < min) {
+          for (let i = 0; i < min - already; i++) {
+            reqRules.push({ rule_id: rule.id, name: rule.name || rule.attribute, count: min, qualifying, alreadySatisfied: already });
+          }
+        }
+      } else if (rule.type === 'minimum_level' && rule.level) {
+        const min = rule.minimum_count || 1;
+        const already = countLevelInPlan(rule.level, plan, catalog);
+        const qualifying = getQualifyingCoursesForLevel(catalog, rule.level);
+        if (qualifying.length > 5 && already < min) {
+          for (let i = 0; i < min - already; i++) {
+            reqRules.push({ rule_id: rule.id, name: `${rule.level}-level course`, count: min, qualifying, alreadySatisfied: already });
           }
         }
       }
     }
   }
 
+  addReqRules(allRules);
+  if (graduationProgram) {
+    addReqRules(graduationProgram.rules);
+  }
+
   // Place requirement blocks evenly across Fall/Spring, skipping Jan Plan
-  // Track how many reqs are already placed in each (year, term)
   const reqLoad: Record<string, number> = {};
   function getReqLoad(year: number, term: string): number {
     return reqLoad[`${year}-${term}`] || 0;
@@ -261,7 +317,6 @@ export function autoPopulatePlan(
     const isJanPlanReq = req.name.toLowerCase().includes('jan');
 
     if (isJanPlanReq) {
-      // Jan Plan requirements go specifically into Jan Plan
       for (let year = 1; year <= 4; year++) {
         if (totalLoad(year, 'jan') < MAX_COURSES_PER_SEMESTER) {
           slot = { year, term: 'jan' };
@@ -269,9 +324,15 @@ export function autoPopulatePlan(
         }
       }
     } else {
-      // Prefer Fall/Spring, skip Jan Plan unless absolutely necessary
       const mainTerms = ['fall', 'spring'];
+      // Prefer less-loaded years for req blocks too
+      const candidateYears: { year: number; load: number }[] = [];
       for (let year = 1; year <= 4; year++) {
+        candidateYears.push({ year, load: totalYearLoad(year) });
+      }
+      candidateYears.sort((a, b) => a.load - b.load);
+
+      for (const { year } of candidateYears) {
         const candidates = mainTerms
           .map(term => ({ term, load: totalLoad(year, term) }))
           .filter(c => c.load < MAX_COURSES_PER_SEMESTER);
@@ -292,7 +353,6 @@ export function autoPopulatePlan(
         }
       }
 
-      // Overflow: try Jan Plan if Fall/Spring are full
       if (!slot) {
         for (let year = 1; year <= 4; year++) {
           for (const term of TERM_ORDER) {
