@@ -23,9 +23,9 @@ export default function SemesterGrid() {
   function removeCourse(yearKey: string, term: string, courseId: string) {
     updatePlan(activePlanIndex, p => {
       const years = { ...p.years };
-      const y = { ...years[yearKey as keyof typeof years] } as Record<string, string[]>;
-      y[term] = y[term].filter(id => id !== courseId);
-      years[yearKey as keyof typeof years] = y;
+      const y = { ...years[yearKey as keyof typeof years] };
+      (y as any)[term] = (y as any)[term].filter((id: string) => id !== courseId);
+      years[yearKey as keyof typeof years] = y as any;
       return { ...p, years };
     });
   }
@@ -38,8 +38,8 @@ export default function SemesterGrid() {
   }
 
   function getCredits(yearKey: string, term: string): number {
-    const y = plan.years[yearKey as keyof typeof plan.years] as Record<string, string[]>;
-    return y[term].reduce((sum, id) => sum + (data.catalog.courses[id]?.credits || 0), 0);
+    const y = plan.years[yearKey as keyof typeof plan.years];
+    return (y as any)[term].reduce((sum: number, id: string) => sum + (data!.catalog.courses[id]?.credits || 0), 0);
   }
 
   return (
@@ -52,8 +52,8 @@ export default function SemesterGrid() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {(['fall', 'jan', 'spring'] as const).map(term => {
-              const y = plan.years[yearKey] as Record<string, string[]>;
-              const courses = y[term];
+              const y = plan.years[yearKey];
+              const courses: string[] = (y as any)[term];
               const credits = getCredits(yearKey, term);
               const isNormalLoad = credits >= 12 && credits <= 18;
               const reqs = plan.requirements.filter(r => r.year === yi + 1 && r.term === term);

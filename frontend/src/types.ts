@@ -103,6 +103,7 @@ export interface SemesterCourses {
   fall: string[];
   jan: string[];
   spring: string[];
+  [key: string]: string[];
 }
 
 export interface YearPlan {

@@ -19,9 +19,9 @@ export default function CompareView() {
   function getAllCourses(plan: typeof planA) {
     const set = new Set<string>();
     Object.values(plan.years).forEach(y => {
-      y.fall.forEach(id => set.add(id));
-      y.jan.forEach(id => set.add(id));
-      y.spring.forEach(id => set.add(id));
+      y.fall.forEach((id: string) => set.add(id));
+      y.jan.forEach((id: string) => set.add(id));
+      y.spring.forEach((id: string) => set.add(id));
     });
     return set;
   }

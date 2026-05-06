@@ -153,9 +153,9 @@ export default function RequirementSidebar() {
   // Gather all course IDs from plan
   const planCourseIds = new Set<string>();
   Object.values(plan.years).forEach(year => {
-    year.fall.forEach(id => planCourseIds.add(id));
-    year.jan.forEach(id => planCourseIds.add(id));
-    year.spring.forEach(id => planCourseIds.add(id));
+    year.fall.forEach((id: string) => planCourseIds.add(id));
+    year.jan.forEach((id: string) => planCourseIds.add(id));
+    year.spring.forEach((id: string) => planCourseIds.add(id));
   });
 
   const majorRules = program ? [...program.rules] : [];

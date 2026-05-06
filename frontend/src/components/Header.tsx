@@ -41,11 +41,12 @@ export default function Header() {
           className="text-sm font-medium bg-gray-50 border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-blue-500"
           value={program.id}
           onChange={(e) => {
+            if (!data) return;
             const pid = e.target.value;
-            const program = data?.programs.find(p => p.id === pid);
-            if (!program || !data) return;
+            const newProgram = data.programs.find(p => p.id === pid);
+            if (!newProgram) return;
             const graduation = data.programs.find(p => p.id === 'colby_graduation');
-            const result = autoPopulatePlan(program, data.catalog.courses, undefined, graduation);
+            const result = autoPopulatePlan(newProgram, data.catalog.courses, undefined, graduation);
             useStore.getState().updatePlan(activePlanIndex, p => ({
               ...p,
               program_id: pid,

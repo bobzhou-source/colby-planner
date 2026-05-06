@@ -33,11 +33,11 @@ export default function SearchDrawer() {
     if (!plan) return;
     updatePlan(activePlanIndex, p => {
       const years = { ...p.years };
-      const y = { ...years[selectedYear as keyof typeof years] } as Record<string, string[]>;
-      if (!y[selectedTerm].includes(courseId)) {
-        y[selectedTerm] = [...y[selectedTerm], courseId];
+      const y = { ...years[selectedYear as keyof typeof years] };
+      if (!(y as any)[selectedTerm].includes(courseId)) {
+        (y as any)[selectedTerm] = [...(y as any)[selectedTerm], courseId];
       }
-      years[selectedYear as keyof typeof years] = y;
+      years[selectedYear as keyof typeof years] = y as any;
       return { ...p, years };
     });
   }

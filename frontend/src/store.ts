@@ -110,12 +110,12 @@ export const useStore = create<AppState>((set, get) => ({
     const toYear = { ...years[to.year as keyof typeof years] };
 
     // Remove from source
-    (fromYear as Record<string, string[]>)[from.term] = (fromYear as Record<string, string[]>)[from.term].filter(id => id !== from.courseId);
+    (fromYear as any)[from.term] = (fromYear as any)[from.term].filter((id: string) => id !== from.courseId);
     // Add to dest
-    (toYear as Record<string, string[]>)[to.term] = [...(toYear as Record<string, string[]>)[to.term], from.courseId];
+    (toYear as any)[to.term] = [...(toYear as any)[to.term], from.courseId];
 
-    years[from.year as keyof typeof years] = fromYear;
-    years[to.year as keyof typeof years] = toYear;
+    years[from.year as keyof typeof years] = fromYear as any;
+    years[to.year as keyof typeof years] = toYear as any;
 
     const newPlan = { ...plan, years };
     const newPlans = plans.map((p, i) => i === from.planIndex ? newPlan : p);
