@@ -1,8 +1,28 @@
 import { useState } from 'react';
 import { useStore } from '../store';
-import type { Rule, PoolItem } from '../types';
+import type { Rule, PoolItem, Course } from '../types';
 
-function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: Record<string, any>): { done: boolean; partial: boolean; count: string } {
+function getCourseLevel(number: string): number {
+  const match = number.match(/^(\d)/);
+  return match ? parseInt(match[1]) : 1;
+}
+
+function getQualifyingCourses(rule: Rule, catalogCourses: Record<string, Course>): string[] {
+  if (rule.type === 'minimum_attribute' && rule.attribute) {
+    const attr = rule.attribute;
+    return Object.values(catalogCourses)
+      .filter(c => c.distributions.includes(attr) || c.attributes.includes(attr))
+      .map(c => c.id);
+  }
+  if (rule.type === 'minimum_level' && rule.level) {
+    return Object.values(catalogCourses)
+      .filter(c => getCourseLevel(c.number) >= rule.level!)
+      .map(c => c.id);
+  }
+  return [];
+}
+
+function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: Record<string, Course>): { done: boolean; partial: boolean; count: string } {
   if (rule.type === 'fixed') {
     const pool = rule.pool || [];
     const total = pool.length;
@@ -43,10 +63,49 @@ function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: 
   return { done: false, partial: false, count: '' };
 }
 
+function QualifyingCourseList({ rule, catalogCourses, planCourseIds }: {
+  rule: Rule;
+  catalogCourses: Record<string, Course>;
+  planCourseIds: Set<string>;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const qualifying = getQualifyingCourses(rule, catalogCourses);
+  if (qualifying.length === 0) return null;
+
+  const display = showAll ? qualifying : qualifying.slice(0, 5);
+  const remaining = qualifying.length - display.length;
+
+  return (
+    <div className="px-3 pb-2.5 pl-10 space-y-1">
+      {display.map(id => {
+        const c = catalogCourses[id];
+        const satisfied = planCourseIds.has(id);
+        return (
+          <div
+            key={id}
+            className={`text-[11px] ${satisfied ? 'text-green-700 font-medium' : 'text-gray-500'}`}
+          >
+            {satisfied ? '✓ ' : '○ '}
+            {id} — {c?.title || 'Unknown'}
+          </div>
+        );
+      })}
+      {remaining > 0 && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="text-[11px] text-blue-600 hover:text-blue-800 font-medium"
+        >
+          {showAll ? 'Show less' : `Show ${remaining} more`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RuleList({ rules, planCourseIds, catalogCourses }: {
   rules: Rule[];
   planCourseIds: Set<string>;
-  catalogCourses: Record<string, any>;
+  catalogCourses: Record<string, Course>;
 }) {
   const [openRules, setOpenRules] = useState<Set<string>>(new Set());
 
@@ -64,6 +123,7 @@ function RuleList({ rules, planCourseIds, catalogCourses }: {
       {rules.map(rule => {
         const status = countSatisfied(rule, planCourseIds, catalogCourses);
         const isOpen = openRules.has(rule.id);
+        const hasQualifying = ['minimum_attribute', 'minimum_level'].includes(rule.type);
 
         return (
           <div
@@ -129,7 +189,11 @@ function RuleList({ rules, planCourseIds, catalogCourses }: {
               </div>
             )}
 
-            {isOpen && rule.note && !rule.pool?.length && (
+            {isOpen && hasQualifying && (
+              <QualifyingCourseList rule={rule} catalogCourses={catalogCourses} planCourseIds={planCourseIds} />
+            )}
+
+            {isOpen && rule.note && !rule.pool?.length && !hasQualifying && (
               <div className="px-3 pb-2.5 pl-10 text-[11px] text-gray-500">
                 {rule.note}
               </div>
