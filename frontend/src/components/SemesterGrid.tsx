@@ -84,7 +84,7 @@ export default function SemesterGrid() {
                         block={req}
                         catalog={data.catalog.courses}
                         onRemove={() => removeRequirement(req.id)}
-                        onClick={() => openSearch({ year: yearKey, term })}
+                        onClick={() => openSearch({ year: yearKey, term }, req.qualifying_courses)}
                       />
                     ))}
                     <button

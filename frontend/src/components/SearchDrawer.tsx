@@ -1,9 +1,53 @@
 import { useState, useMemo, useEffect } from 'react';
 import Fuse from 'fuse.js';
 import { useStore } from '../store';
+import type { Course } from '../types';
+
+function SearchResultCard({ course, onAdd }: { course: Course; onAdd: () => void }) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <button
+        onClick={onAdd}
+        className="w-full text-left p-3 bg-gray-50 border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
+      >
+        <div className="flex justify-between items-start mb-1">
+          <span className="text-sm font-bold">{course.id}</span>
+          <span className="text-xs text-gray-400">{course.credits} cr</span>
+        </div>
+        <div className="text-xs text-gray-600 line-clamp-2">{course.title}</div>
+        <div className="flex gap-1 mt-2 flex-wrap">
+          {course.offered_terms.map(t => (
+            <span key={t} className="text-[10px] px-1.5 py-0.5 bg-white rounded text-gray-500 border border-gray-200">
+              {t}
+            </span>
+          ))}
+        </div>
+      </button>
+
+      {hovered && (
+        <div className="absolute bottom-full left-0 right-0 mb-2 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
+          <div className="font-bold mb-1">{course.id} — {course.title}</div>
+          {course.prerequisites.length > 0 && (
+            <div className="text-gray-600 mb-1">Prereqs: {course.prerequisites.join(', ')}</div>
+          )}
+          {course.distributions.length > 0 && (
+            <div className="text-gray-600 mb-1">Fulfills: {course.distributions.join(', ')}</div>
+          )}
+          <div className="text-gray-500">Typically offered: {course.offered_terms.join(', ')}</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SearchDrawer() {
-  const { data, searchOpen, toggleSearch, plans, activePlanIndex, updatePlan, searchTarget } = useStore();
+  const { data, searchOpen, toggleSearch, plans, activePlanIndex, updatePlan, searchTarget, searchFilter } = useStore();
   const [query, setQuery] = useState('');
   const [selectedYear, setSelectedYear] = useState(searchTarget.year);
   const [selectedTerm, setSelectedTerm] = useState(searchTarget.term);
@@ -15,19 +59,31 @@ export default function SearchDrawer() {
 
   const plan = plans[activePlanIndex];
 
+  const baseCourses = useMemo(() => {
+    if (!data) return [];
+    let courses = Object.values(data.catalog.courses).filter(c => c.status !== 'catalog_only');
+    if (searchFilter && searchFilter.length > 0) {
+      const filterSet = new Set(searchFilter);
+      courses = courses.filter(c => filterSet.has(c.id));
+    }
+    return courses;
+  }, [data, searchFilter]);
+
   const fuse = useMemo(() => {
-    if (!data) return null;
-    const courses = Object.values(data.catalog.courses).filter(c => c.status !== 'catalog_only');
-    return new Fuse(courses, {
+    if (baseCourses.length === 0) return null;
+    return new Fuse(baseCourses, {
       keys: ['id', 'title', 'subject', 'department'],
       threshold: 0.3,
     });
-  }, [data]);
+  }, [baseCourses]);
 
   const results = useMemo(() => {
+    if (searchFilter && searchFilter.length > 0 && !query.trim()) {
+      return baseCourses.slice(0, 12).map(item => ({ item }));
+    }
     if (!fuse || !query.trim()) return [];
     return fuse.search(query).slice(0, 12);
-  }, [fuse, query]);
+  }, [fuse, query, searchFilter, baseCourses]);
 
   function addCourse(courseId: string) {
     if (!plan) return;
@@ -100,30 +156,18 @@ export default function SearchDrawer() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        {query.trim() === '' && (
+        {results.length === 0 && query.trim() === '' && !searchFilter && (
           <div className="col-span-full text-center text-sm text-gray-400 py-8">
             Type to search courses...
           </div>
         )}
+        {results.length === 0 && query.trim() !== '' && (
+          <div className="col-span-full text-center text-sm text-gray-400 py-8">
+            No courses found
+          </div>
+        )}
         {results.map(({ item }) => (
-          <button
-            key={item.id}
-            onClick={() => addCourse(item.id)}
-            className="text-left p-3 bg-gray-50 border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
-          >
-            <div className="flex justify-between items-start mb-1">
-              <span className="text-sm font-bold">{item.id}</span>
-              <span className="text-xs text-gray-400">{item.credits} cr</span>
-            </div>
-            <div className="text-xs text-gray-600 line-clamp-2">{item.title}</div>
-            <div className="flex gap-1 mt-2 flex-wrap">
-              {item.offered_terms.map(t => (
-                <span key={t} className="text-[10px] px-1.5 py-0.5 bg-white rounded text-gray-500 border border-gray-200">
-                  {t}
-                </span>
-              ))}
-            </div>
-          </button>
+          <SearchResultCard key={item.id} course={item} onAdd={() => addCourse(item.id)} />
         ))}
       </div>
     </div>

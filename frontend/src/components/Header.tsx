@@ -8,17 +8,18 @@ export default function Header() {
   const program = data?.programs.find(p => p.id === plan?.program_id);
   const secondary = plan?.secondary_program_id ? data?.programs.find(p => p.id === plan.secondary_program_id) : null;
 
-  const totalCredits = plan ? Object.values(plan.years).reduce((sum, year) => {
+  const isCreditMajor = program?.total.unit === 'credit_hours';
+  const totalValue = plan ? Object.values(plan.years).reduce((sum, year) => {
     const allCourses = [...year.fall, ...year.jan, ...year.spring];
-    return sum + allCourses.reduce((c, id) => {
-      const course = data?.catalog.courses[id];
-      return c + (course?.credits || 0);
-    }, 0);
+    if (isCreditMajor) {
+      return sum + allCourses.reduce((c, id) => c + (data?.catalog.courses[id]?.credits || 0), 0);
+    }
+    return sum + allCourses.length;
   }, 0) : 0;
 
   const target = program?.total.count || 0;
-  const unit = program?.total.unit === 'credit_hours' ? 'cr' : 'courses';
-  const progress = target > 0 ? Math.min(100, (totalCredits / target) * 100) : 0;
+  const unit = isCreditMajor ? 'cr' : 'courses';
+  const progress = target > 0 ? Math.min(100, (totalValue / target) * 100) : 0;
 
   function handleShare() {
     if (!plan) return;
@@ -83,7 +84,7 @@ export default function Header() {
           />
         </div>
         <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
-          {totalCredits} / {target} {unit}
+          {Math.round(totalValue)} / {target} {unit}
         </span>
       </div>
 

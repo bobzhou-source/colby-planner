@@ -17,6 +17,7 @@ interface AppState {
   sidebarOpen: boolean;
   onboardingDone: boolean;
   searchTarget: { year: string; term: string };
+  searchFilter: string[] | null;
 
   loadData: () => Promise<void>;
   addPlan: (plan: Plan) => void;
@@ -26,7 +27,7 @@ interface AppState {
   moveCourse: (from: { planIndex: number; year: string; term: string; courseId: string }, to: { year: string; term: string }) => void;
   toggleCompare: () => void;
   toggleSearch: () => void;
-  openSearch: (target?: { year: string; term: string }) => void;
+  openSearch: (target?: { year: string; term: string }, filter?: string[] | null) => void;
   toggleSidebar: () => void;
   finishOnboarding: () => void;
   loadPlanFromHash: () => void;
@@ -51,6 +52,7 @@ export const useStore = create<AppState>((set, get) => ({
   sidebarOpen: true,
   onboardingDone: false,
   searchTarget: { year: 'year1', term: 'fall' },
+  searchFilter: null,
 
   loadData: async () => {
     try {
@@ -124,10 +126,11 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   toggleCompare: () => set(s => ({ compareMode: !s.compareMode })),
-  toggleSearch: () => set(s => ({ searchOpen: !s.searchOpen })),
-  openSearch: (target) => set(s => ({
+  toggleSearch: () => set(s => ({ searchOpen: !s.searchOpen, searchFilter: s.searchOpen ? null : s.searchFilter })),
+  openSearch: (target, filter) => set(s => ({
     searchOpen: true,
     searchTarget: target || s.searchTarget,
+    searchFilter: filter !== undefined ? filter : s.searchFilter,
   })),
   toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
 
