@@ -3,6 +3,7 @@ import type { Program, Plan, Course } from '../types';
 import { createEmptyPlan } from '../types';
 import { autoPopulatePlan } from '../utils/autoPopulate';
 import { DEPARTMENTS } from '../utils/departments';
+import { findCompatiblePrograms, isLikelyForbidden } from '../utils/programOverlap';
 
 interface Props {
   onFinish: () => void;
@@ -234,16 +235,68 @@ export default function Onboarding({ onFinish, programs, catalog, onCreatePlans 
           {/* Add secondary? */}
           {step === 'add_secondary' && (
             <div className="space-y-3">
+              {primaryProgram && (
+                <div className="mb-3">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    Recommended based on overlap
+                  </div>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {(() => {
+                      const matches = findCompatiblePrograms(primaryProgram, programs);
+                      const top = matches.slice(0, 6);
+                      if (top.length === 0) {
+                        return <div className="text-xs text-gray-400">No strong overlaps found. You can still browse all programs.</div>;
+                      }
+                      return top.map(m => {
+                        const forbidden = isLikelyForbidden(primaryProgram, m.program);
+                        return (
+                          <button
+                            key={m.program.id}
+                            onClick={() => {
+                              setSecondaryMajor(m.program.id);
+                              if (m.program.concentrations && m.program.concentrations.options.length > 0) {
+                                setStep('secondary_concentration');
+                              } else {
+                                finish(primaryMajor!, primaryConc, m.program.id, null);
+                              }
+                            }}
+                            disabled={forbidden}
+                            className={`w-full p-2.5 rounded-lg border-2 text-left transition-all ${
+                              forbidden
+                                ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                                : 'border-gray-200 hover:border-blue-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="font-semibold text-sm">
+                                {m.program.name}
+                                {forbidden && <span className="text-red-500 text-[10px] ml-1.5 font-bold">NOT ALLOWED</span>}
+                              </div>
+                              <div className="text-[11px] text-gray-400">
+                                {m.overlap} shared
+                              </div>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              {m.program.total.count} {m.program.total.unit === 'credit_hours' ? 'credits' : 'courses'}
+                            </div>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+
               <button
                 onClick={() => setStep('secondary_dept')}
-                className="w-full p-4 rounded-lg border-2 border-blue-200 bg-blue-50 hover:border-blue-400 text-left transition-all"
+                className="w-full p-3 rounded-lg border-2 border-blue-200 bg-blue-50 hover:border-blue-400 text-left transition-all"
               >
-                <div className="font-semibold text-sm text-blue-800">Yes, add a second major or minor</div>
-                <div className="text-xs text-blue-600">Plan courses for a double major or minor</div>
+                <div className="font-semibold text-sm text-blue-800">Browse all departments</div>
+                <div className="text-xs text-blue-600">Pick from the full list</div>
               </button>
               <button
                 onClick={() => finish(primaryMajor!, primaryConc, null, null)}
-                className="w-full p-4 rounded-lg border-2 border-gray-200 hover:border-gray-400 text-left transition-all"
+                className="w-full p-3 rounded-lg border-2 border-gray-200 hover:border-gray-400 text-left transition-all"
               >
                 <div className="font-semibold text-sm text-gray-700">No, just my primary major</div>
                 <div className="text-xs text-gray-500">Skip and start planning</div>
