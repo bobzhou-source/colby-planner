@@ -7,6 +7,41 @@ function getCourseLevel(number: string): number {
   return match ? parseInt(match[1]) : 1;
 }
 
+function filterToText(filter: Record<string, any>): string {
+  const parts: string[] = [];
+  if (filter.subject) parts.push(`${filter.subject} courses`);
+  else if (filter.departments) parts.push(`${filter.departments.join(', ')} department courses`);
+  else parts.push('Any courses');
+
+  if (filter.level) {
+    if (Array.isArray(filter.level)) parts.push(`at ${filter.level.join('/')} level`);
+    else if (typeof filter.level === 'string') parts.push(`at ${filter.level}`);
+    else parts.push(`at ${filter.level} level`);
+  }
+  if (filter.level_min && filter.level_max) {
+    parts.push(`at ${filter.level_min}-${filter.level_max} level`);
+  } else if (filter.level_min) {
+    parts.push(`at ${filter.level_min}+ level`);
+  } else if (filter.level_max) {
+    parts.push(`at ${filter.level_max} or below`);
+  }
+  if (filter.type) {
+    if (Array.isArray(filter.type)) parts.push(`(${filter.type.join(' or ')})`);
+    else parts.push(`(${filter.type})`);
+  }
+  if (filter.attributes) parts.push(`with ${filter.attributes.join(', ')}`);
+  if (filter.exclude_course_ids) parts.push(`(excluding ${filter.exclude_course_ids.join(', ')})`);
+  if (filter.include_only_course_ids) parts.push(`(only ${filter.include_only_course_ids.join(', ')})`);
+  if (filter.focus_areas) parts.push(`focused on ${filter.focus_areas.join(', ')}`);
+  if (filter.medium) parts.push(`medium: ${filter.medium.join(', ')}`);
+  if (filter.period) parts.push(`period: ${filter.period}`);
+  if (filter.field) parts.push(`field: ${filter.field}`);
+  if (filter.disciplines) parts.push(`disciplines: ${filter.disciplines.join(', ')}`);
+  if (filter.approved_list) parts.push(`(approved list: ${filter.approved_list})`);
+
+  return parts.join(' ');
+}
+
 function getQualifyingCourses(rule: Rule, catalogCourses: Record<string, Course>): string[] {
   if (rule.type === 'minimum_attribute' && rule.attribute) {
     const attr = rule.attribute;
@@ -22,7 +57,7 @@ function getQualifyingCourses(rule: Rule, catalogCourses: Record<string, Course>
   return [];
 }
 
-function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: Record<string, Course>): { done: boolean; partial: boolean; count: string } {
+function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: Record<string, Course>): { done: boolean; partial: boolean; count: string; isLimit: boolean } {
   if (rule.type === 'fixed') {
     const pool = rule.pool || [];
     const total = pool.length;
@@ -30,7 +65,7 @@ function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: 
       if (item.type === 'course') return planCourseIds.has(item.course_id);
       return false;
     }).length;
-    return { done: satisfied === total && total > 0, partial: satisfied > 0 && satisfied < total, count: `${satisfied}/${total}` };
+    return { done: satisfied === total && total > 0, partial: satisfied > 0 && satisfied < total, count: `${satisfied}/${total}`, isLimit: false };
   }
   if (rule.type === 'choice' || rule.type === 'sequence_choice') {
     const select = rule.select || 1;
@@ -40,7 +75,7 @@ function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: 
       if (item.type === 'sequence') return item.sequence.every((id: string) => planCourseIds.has(id));
       return false;
     }).length;
-    return { done: satisfied >= select, partial: satisfied > 0 && satisfied < select, count: `${satisfied}/${select}` };
+    return { done: satisfied >= select, partial: satisfied > 0 && satisfied < select, count: `${satisfied}/${select}`, isLimit: false };
   }
   if (rule.type === 'minimum_attribute') {
     const attr = rule.attribute || '';
@@ -49,7 +84,7 @@ function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: 
       const c = catalogCourses[id];
       return c?.attributes?.includes(attr) || c?.distributions?.includes(attr);
     }).length;
-    return { done: satisfied >= min, partial: satisfied > 0 && satisfied < min, count: `${satisfied}/${min}` };
+    return { done: satisfied >= min, partial: satisfied > 0 && satisfied < min, count: `${satisfied}/${min}`, isLimit: false };
   }
   if (rule.type === 'minimum_level') {
     const level = rule.level || 0;
@@ -58,9 +93,16 @@ function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: 
       const num = parseInt(catalogCourses[id]?.number);
       return num >= level;
     }).length;
-    return { done: satisfied >= min, partial: satisfied > 0 && satisfied < min, count: `${satisfied}/${min}` };
+    return { done: satisfied >= min, partial: satisfied > 0 && satisfied < min, count: `${satisfied}/${min}`, isLimit: false };
   }
-  return { done: false, partial: false, count: '' };
+  if (rule.type === 'limit') {
+    return { done: true, partial: false, count: '', isLimit: true };
+  }
+  if (rule.type === 'distribution') {
+    const select = rule.select || 0;
+    return { done: false, partial: false, count: `0/${select}`, isLimit: false };
+  }
+  return { done: false, partial: false, count: '', isLimit: false };
 }
 
 function QualifyingCourseList({ rule, catalogCourses, planCourseIds }: {
@@ -124,6 +166,18 @@ function RuleList({ rules, planCourseIds, catalogCourses }: {
         const status = countSatisfied(rule, planCourseIds, catalogCourses);
         const isOpen = openRules.has(rule.id);
         const hasQualifying = ['minimum_attribute', 'minimum_level'].includes(rule.type);
+        const hasPool = rule.pool && rule.pool.length > 0;
+        const hasExplicitCourses = hasPool && rule.pool!.some((i: PoolItem) => i.type === 'course' || i.type === 'sequence');
+        const hasFilters = hasPool && rule.pool!.some((i: PoolItem) => i.type === 'filter');
+
+        if (status.isLimit) {
+          return (
+            <div key={rule.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <div className="text-xs font-medium text-gray-600">{rule.name}</div>
+              {rule.note && <div className="text-[11px] text-gray-400 mt-0.5">{rule.note}</div>}
+            </div>
+          );
+        }
 
         return (
           <div
@@ -159,17 +213,15 @@ function RuleList({ rules, planCourseIds, catalogCourses }: {
               )}
             </button>
 
-            {isOpen && rule.pool && rule.pool.length > 0 && (
+            {isOpen && (
               <div className="px-3 pb-2.5 pl-10 space-y-1">
-                {rule.pool.map((item, i) => {
+                {/* Explicit courses/sequences */}
+                {hasExplicitCourses && rule.pool!.map((item, i) => {
                   if (item.type === 'course') {
                     const course = catalogCourses[item.course_id];
                     const satisfied = planCourseIds.has(item.course_id);
                     return (
-                      <div
-                        key={i}
-                        className={`text-[11px] ${satisfied ? 'text-green-700 font-medium' : 'text-gray-500'}`}
-                      >
+                      <div key={i} className={`text-[11px] ${satisfied ? 'text-green-700 font-medium' : 'text-gray-500'}`}>
                         {satisfied ? '✓ ' : '○ '}
                         {item.course_id} — {course?.title || 'Unknown'}
                       </div>
@@ -186,16 +238,28 @@ function RuleList({ rules, planCourseIds, catalogCourses }: {
                   }
                   return null;
                 })}
-              </div>
-            )}
 
-            {isOpen && hasQualifying && (
-              <QualifyingCourseList rule={rule} catalogCourses={catalogCourses} planCourseIds={planCourseIds} />
-            )}
+                {/* Filter descriptions */}
+                {hasFilters && rule.pool!.map((item, i) => {
+                  if (item.type === 'filter') {
+                    return (
+                      <div key={i} className="text-[11px] text-gray-500 italic">
+                        ○ Any course: {filterToText(item.filter)}
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
 
-            {isOpen && rule.note && !rule.pool?.length && !hasQualifying && (
-              <div className="px-3 pb-2.5 pl-10 text-[11px] text-gray-500">
-                {rule.note}
+                {/* No pool at all — show note */}
+                {!hasPool && rule.note && (
+                  <div className="text-[11px] text-gray-500">{rule.note}</div>
+                )}
+
+                {/* Qualifying courses for min_attribute/min_level */}
+                {hasQualifying && (
+                  <QualifyingCourseList rule={rule} catalogCourses={catalogCourses} planCourseIds={planCourseIds} />
+                )}
               </div>
             )}
           </div>
