@@ -1,7 +1,7 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import type { Plan, YearPlan, SemesterCourses, RequirementBlock } from '../types';
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 
 function yearToString(year: SemesterCourses): string {
   const parts: string[] = [];
@@ -54,6 +54,7 @@ function planToCompact(plan: Plan): string {
   const parts = [
     VERSION,
     plan.program_id,
+    plan.secondary_program_id || '',
     plan.concentration_id || '',
     yearToString(y.year1),
     yearToString(y.year2),
@@ -67,25 +68,33 @@ function planToCompact(plan: Plan): string {
 function compactToPlan(compact: string, name: string): Plan | null {
   const parts = compact.split('~');
   const version = parts[0];
-  if (version !== VERSION && version !== 'v1') return null;
+  if (version !== VERSION && version !== 'v2' && version !== 'v1') return null;
 
   const program_id = parts[1];
-  const concentration_id = parts[2] || undefined;
+  const secondary_program_id = parts[2] || undefined;
+  const concentration_id = parts[3] || undefined;
+
+  let yearIdx = 4;
+  if (version === 'v1') {
+    yearIdx = 3;
+  }
+
   const years: YearPlan = {
-    year1: stringToYear(parts[3] || ''),
-    year2: stringToYear(parts[4] || ''),
-    year3: stringToYear(parts[5] || ''),
-    year4: stringToYear(parts[6] || ''),
+    year1: stringToYear(parts[yearIdx] || ''),
+    year2: stringToYear(parts[yearIdx + 1] || ''),
+    year3: stringToYear(parts[yearIdx + 2] || ''),
+    year4: stringToYear(parts[yearIdx + 3] || ''),
   };
 
-  const requirements = version === VERSION && parts[7]
-    ? stringToReqs(parts[7])
+  const requirements = (version === VERSION || version === 'v2') && parts[yearIdx + 4]
+    ? stringToReqs(parts[yearIdx + 4])
     : [];
 
   return {
     id: crypto.randomUUID(),
     name,
     program_id,
+    secondary_program_id,
     concentration_id,
     years,
     requirements,

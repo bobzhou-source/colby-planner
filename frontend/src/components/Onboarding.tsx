@@ -11,34 +11,54 @@ interface Props {
   onCreatePlans: (plans: Plan[]) => void;
 }
 
-export default function Onboarding({ onFinish, programs, catalog, onCreatePlans }: Props) {
-  const [step, setStep] = useState<'dept' | 'major' | 'concentration'>('dept');
-  const [selectedDept, setSelectedDept] = useState<string | null>(null);
-  const [selectedMajor, setSelectedMajor] = useState<string | null>(null);
-  const [selectedConcentration, setSelectedConcentration] = useState<string | null>(null);
+type Step =
+  | 'dept'
+  | 'major'
+  | 'concentration'
+  | 'add_secondary'
+  | 'secondary_dept'
+  | 'secondary_major'
+  | 'secondary_concentration';
 
-  const dept = DEPARTMENTS.find(d => d.name === selectedDept);
-  const deptPrograms = dept
-    ? programs.filter(p => dept.programIds.includes(p.id))
-    : [];
-  const selectedProgram = programs.find(p => p.id === selectedMajor);
-  const concentrations = selectedProgram?.concentrations?.options ?? [];
-  type Conc = typeof concentrations[number];
+export default function Onboarding({ onFinish, programs, catalog, onCreatePlans }: Props) {
+  const [step, setStep] = useState<Step>('dept');
+
+  // Primary selections
+  const [primaryDept, setPrimaryDept] = useState<string | null>(null);
+  const [primaryMajor, setPrimaryMajor] = useState<string | null>(null);
+  const [primaryConc, setPrimaryConc] = useState<string | null>(null);
+
+  // Secondary selections
+  const [secondaryDept, setSecondaryDept] = useState<string | null>(null);
+  const [secondaryMajor, setSecondaryMajor] = useState<string | null>(null);
+  const [secondaryConc, setSecondaryConc] = useState<string | null>(null);
+
+  const primaryProgram = programs.find(p => p.id === primaryMajor);
+  const primaryConcs = primaryProgram?.concentrations?.options ?? [];
+  type Conc = typeof primaryConcs[number];
+
+  const secondaryProgram = programs.find(p => p.id === secondaryMajor);
+  const secondaryConcs = secondaryProgram?.concentrations?.options ?? [];
+
+  function getDeptPrograms(deptName: string) {
+    const d = DEPARTMENTS.find(x => x.name === deptName);
+    if (!d) return [];
+    return programs.filter(p => d.programIds.includes(p.id));
+  }
 
   function handleDept(name: string) {
-    setSelectedDept(name);
-    const d = DEPARTMENTS.find(x => x.name === name);
-    if (!d || d.programIds.length === 0) {
+    setPrimaryDept(name);
+    const progs = getDeptPrograms(name);
+    if (progs.length === 0) {
       onFinish();
       return;
     }
-    const progs = programs.filter(p => d.programIds.includes(p.id));
     if (progs.length === 1) {
-      setSelectedMajor(progs[0].id);
+      setPrimaryMajor(progs[0].id);
       if (progs[0].concentrations && progs[0].concentrations.options.length > 0) {
         setStep('concentration');
       } else {
-        finish(progs[0].id, null);
+        setStep('add_secondary');
       }
     } else {
       setStep('major');
@@ -46,53 +66,107 @@ export default function Onboarding({ onFinish, programs, catalog, onCreatePlans 
   }
 
   function handleMajor(id: string) {
-    setSelectedMajor(id);
+    setPrimaryMajor(id);
     const p = programs.find(x => x.id === id);
     if (p?.concentrations && p.concentrations.options.length > 0) {
       setStep('concentration');
     } else {
-      finish(id, null);
+      setStep('add_secondary');
     }
   }
 
-  function finish(majorId: string, concId: string | null) {
+  function handleSecondaryDept(name: string) {
+    setSecondaryDept(name);
+    const progs = getDeptPrograms(name);
+    if (progs.length === 0) {
+      finish(primaryMajor!, primaryConc, null, null);
+      return;
+    }
+    if (progs.length === 1) {
+      setSecondaryMajor(progs[0].id);
+      if (progs[0].concentrations && progs[0].concentrations.options.length > 0) {
+        setStep('secondary_concentration');
+      } else {
+        finish(primaryMajor!, primaryConc, progs[0].id, null);
+      }
+    } else {
+      setStep('secondary_major');
+    }
+  }
+
+  function handleSecondaryMajor(id: string) {
+    setSecondaryMajor(id);
+    const p = programs.find(x => x.id === id);
+    if (p?.concentrations && p.concentrations.options.length > 0) {
+      setStep('secondary_concentration');
+    } else {
+      finish(primaryMajor!, primaryConc, id, null);
+    }
+  }
+
+  function finish(
+    majorId: string,
+    concId: string | null,
+    secondaryId: string | null,
+    secondaryConcId: string | null,
+  ) {
     const p = programs.find(x => x.id === majorId);
     if (!p) {
       onFinish();
       return;
     }
+    const secondary = secondaryId ? programs.find(x => x.id === secondaryId) : undefined;
     const graduation = programs.find(x => x.id === 'colby_graduation');
-    const result = autoPopulatePlan(p, catalog, concId || undefined, graduation);
+    const result = autoPopulatePlan(p, catalog, concId || undefined, graduation, secondary);
     const plan = createEmptyPlan('Plan A', majorId);
     plan.years = result.years;
     plan.requirements = result.requirements;
+    plan.concentration_id = concId || undefined;
+    plan.secondary_program_id = secondaryId || undefined;
     onCreatePlans([plan]);
     onFinish();
+  }
+
+  function stepTitle() {
+    switch (step) {
+      case 'dept': return 'Welcome to Colby Pathfinder';
+      case 'major': return 'Choose your major';
+      case 'concentration': return 'Choose your concentration';
+      case 'add_secondary': return 'Double major or minor?';
+      case 'secondary_dept': return 'Choose second department';
+      case 'secondary_major': return 'Choose second program';
+      case 'secondary_concentration': return 'Choose concentration';
+    }
+  }
+
+  function stepSubtitle() {
+    switch (step) {
+      case 'dept': return 'Pick a department to get a suggested 4-year plan. You can always change it later.';
+      case 'major': return `${primaryDept} offers multiple programs. Pick the one that fits you.`;
+      case 'concentration': return `${primaryProgram?.name} has different tracks. Pick one to tailor your plan.`;
+      case 'add_secondary': return 'Would you like to add a second major or a minor to your plan?';
+      case 'secondary_dept': return 'Pick the department for your second program.';
+      case 'secondary_major': return `${secondaryDept} offers multiple programs. Pick your second major or minor.`;
+      case 'secondary_concentration': return `${secondaryProgram?.name} has different tracks.`;
+    }
   }
 
   return (
     <div className="fixed inset-0 bg-white/95 backdrop-blur-sm z-50 flex items-center justify-center">
       <div className="bg-white border border-gray-200 rounded-xl shadow-2xl w-[90%] max-w-lg max-h-[80vh] flex flex-col">
         <div className="px-7 pt-6">
-          <h2 className="text-xl font-extrabold mb-1">
-            {step === 'dept' && 'Welcome to Colby Pathfinder'}
-            {step === 'major' && 'Choose your major'}
-            {step === 'concentration' && 'Choose your concentration'}
-          </h2>
-          <p className="text-sm text-gray-500">
-            {step === 'dept' && 'Pick a department to get a suggested 4-year plan. You can always change it later.'}
-            {step === 'major' && `${selectedDept} offers multiple programs. Pick the one that fits you.`}
-            {step === 'concentration' && `${selectedProgram?.name} has different tracks. Pick one to tailor your plan.`}
-          </p>
+          <h2 className="text-xl font-extrabold mb-1">{stepTitle()}</h2>
+          <p className="text-sm text-gray-500">{stepSubtitle()}</p>
         </div>
 
         <div className="px-7 py-5 overflow-y-auto flex-1">
-          {step === 'dept' && (
+          {/* Department grid */}
+          {(step === 'dept' || step === 'secondary_dept') && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
               {DEPARTMENTS.map(d => (
                 <button
                   key={d.name}
-                  onClick={() => handleDept(d.name)}
+                  onClick={() => step === 'dept' ? handleDept(d.name) : handleSecondaryDept(d.name)}
                   className="p-3 rounded-lg border-2 border-gray-200 hover:border-blue-300 text-left transition-all"
                 >
                   <div className="font-semibold text-sm">{d.name}</div>
@@ -101,12 +175,13 @@ export default function Onboarding({ onFinish, programs, catalog, onCreatePlans 
             </div>
           )}
 
-          {step === 'major' && (
+          {/* Major list */}
+          {(step === 'major' || step === 'secondary_major') && (
             <div className="space-y-2 max-h-80 overflow-y-auto">
-              {deptPrograms.map(p => (
+              {(step === 'major' ? getDeptPrograms(primaryDept!) : getDeptPrograms(secondaryDept!)).map(p => (
                 <button
                   key={p.id}
-                  onClick={() => handleMajor(p.id)}
+                  onClick={() => step === 'major' ? handleMajor(p.id) : handleSecondaryMajor(p.id)}
                   className="w-full p-3 rounded-lg border-2 border-gray-200 hover:border-blue-300 text-left transition-all"
                 >
                   <div className="font-semibold text-sm">{p.name}</div>
@@ -119,25 +194,60 @@ export default function Onboarding({ onFinish, programs, catalog, onCreatePlans 
             </div>
           )}
 
-          {step === 'concentration' && (
+          {/* Concentration list */}
+          {(step === 'concentration' || step === 'secondary_concentration') && (
             <div className="space-y-2 max-h-80 overflow-y-auto">
               <button
-                onClick={() => finish(selectedMajor!, null)}
+                onClick={() => {
+                  if (step === 'concentration') {
+                    setPrimaryConc(null);
+                    setStep('add_secondary');
+                  } else {
+                    finish(primaryMajor!, primaryConc, secondaryMajor!, null);
+                  }
+                }}
                 className="w-full p-3 rounded-lg border-2 border-gray-200 hover:border-blue-300 text-left transition-all"
               >
-                <div className="font-semibold text-sm">Standard {selectedProgram?.name}</div>
+                <div className="font-semibold text-sm">Standard {step === 'concentration' ? primaryProgram?.name : secondaryProgram?.name}</div>
                 <div className="text-xs text-gray-500">No concentration</div>
               </button>
-              {concentrations.map((c: Conc) => (
+              {(step === 'concentration' ? primaryConcs : secondaryConcs).map((c: Conc) => (
                 <button
                   key={c.id}
-                  onClick={() => finish(selectedMajor!, c.id)}
+                  onClick={() => {
+                    if (step === 'concentration') {
+                      setPrimaryConc(c.id);
+                      setStep('add_secondary');
+                    } else {
+                      finish(primaryMajor!, primaryConc, secondaryMajor!, c.id);
+                    }
+                  }}
                   className="w-full p-3 rounded-lg border-2 border-gray-200 hover:border-blue-300 text-left transition-all"
                 >
                   <div className="font-semibold text-sm">{c.name}</div>
                   {c.description && <div className="text-xs text-gray-500">{c.description}</div>}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Add secondary? */}
+          {step === 'add_secondary' && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setStep('secondary_dept')}
+                className="w-full p-4 rounded-lg border-2 border-blue-200 bg-blue-50 hover:border-blue-400 text-left transition-all"
+              >
+                <div className="font-semibold text-sm text-blue-800">Yes, add a second major or minor</div>
+                <div className="text-xs text-blue-600">Plan courses for a double major or minor</div>
+              </button>
+              <button
+                onClick={() => finish(primaryMajor!, primaryConc, null, null)}
+                className="w-full p-4 rounded-lg border-2 border-gray-200 hover:border-gray-400 text-left transition-all"
+              >
+                <div className="font-semibold text-sm text-gray-700">No, just my primary major</div>
+                <div className="text-xs text-gray-500">Skip and start planning</div>
+              </button>
             </div>
           )}
         </div>
@@ -149,13 +259,17 @@ export default function Onboarding({ onFinish, programs, catalog, onCreatePlans 
           {step !== 'dept' && (
             <button
               onClick={() => {
-                if (step === 'concentration') {
-                  setStep('major');
-                  setSelectedConcentration(null);
-                } else if (step === 'major') {
-                  setStep('dept');
-                  setSelectedMajor(null);
-                }
+                const backMap: Record<Step, Step | null> = {
+                  dept: null,
+                  major: 'dept',
+                  concentration: 'major',
+                  add_secondary: primaryProgram?.concentrations?.options.length ? 'concentration' : 'major',
+                  secondary_dept: 'add_secondary',
+                  secondary_major: 'secondary_dept',
+                  secondary_concentration: 'secondary_major',
+                };
+                const prev = backMap[step];
+                if (prev) setStep(prev);
               }}
               className="text-sm text-gray-500 hover:text-gray-700"
             >

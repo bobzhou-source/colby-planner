@@ -127,6 +127,7 @@ export interface Plan {
   id: string;
   name: string;
   program_id: string;
+  secondary_program_id?: string;
   concentration_id?: string;
   years: YearPlan;
   requirements: RequirementBlock[];

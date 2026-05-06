@@ -13,6 +13,7 @@ export default function PlanTabs() {
     );
     newPlan.years = JSON.parse(JSON.stringify(current.years));
     newPlan.concentration_id = current.concentration_id;
+    newPlan.secondary_program_id = current.secondary_program_id;
     newPlan.requirements = JSON.parse(JSON.stringify(current.requirements));
     addPlan(newPlan);
   }

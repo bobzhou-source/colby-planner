@@ -6,6 +6,7 @@ export default function Header() {
   const { data, plans, activePlanIndex, toggleSearch, toggleCompare, compareMode } = useStore();
   const plan = plans[activePlanIndex];
   const program = data?.programs.find(p => p.id === plan?.program_id);
+  const secondary = plan?.secondary_program_id ? data?.programs.find(p => p.id === plan.secondary_program_id) : null;
 
   const totalCredits = plan ? Object.values(plan.years).reduce((sum, year) => {
     const allCourses = [...year.fall, ...year.jan, ...year.spring];
@@ -37,32 +38,41 @@ export default function Header() {
       <div className="w-px h-6 bg-gray-200" />
 
       {program && (
-        <select
-          className="text-sm font-medium bg-gray-50 border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-blue-500"
-          value={program.id}
-          onChange={(e) => {
-            if (!data) return;
-            const pid = e.target.value;
-            const newProgram = data.programs.find(p => p.id === pid);
-            if (!newProgram) return;
-            const graduation = data.programs.find(p => p.id === 'colby_graduation');
-            const result = autoPopulatePlan(newProgram, data.catalog.courses, undefined, graduation);
-            useStore.getState().updatePlan(activePlanIndex, p => ({
-              ...p,
-              program_id: pid,
-              concentration_id: undefined,
-              years: result.years,
-              requirements: result.requirements,
-            }));
-          }}
-        >
-          {data?.programs
-          .filter(p => p.degree_type === 'major')
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-1">
+          <select
+            className="text-sm font-medium bg-gray-50 border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-blue-500"
+            value={program.id}
+            onChange={(e) => {
+              if (!data) return;
+              const pid = e.target.value;
+              const newProgram = data.programs.find(p => p.id === pid);
+              if (!newProgram) return;
+              const graduation = data.programs.find(p => p.id === 'colby_graduation');
+              const sec = plan?.secondary_program_id ? data.programs.find(p => p.id === plan.secondary_program_id) : undefined;
+              const result = autoPopulatePlan(newProgram, data.catalog.courses, undefined, graduation, sec);
+              useStore.getState().updatePlan(activePlanIndex, p => ({
+                ...p,
+                program_id: pid,
+                concentration_id: undefined,
+                years: result.years,
+                requirements: result.requirements,
+              }));
+            }}
+          >
+            {data?.programs
+            .filter(p => p.degree_type === 'major')
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {secondary && (
+            <>
+              <span className="text-xs text-gray-400">+</span>
+              <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded">{secondary.name}</span>
+            </>
+          )}
+        </div>
       )}
 
       <div className="flex-1 flex items-center gap-3 min-w-0">

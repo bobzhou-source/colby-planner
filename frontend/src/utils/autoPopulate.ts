@@ -53,6 +53,7 @@ export function autoPopulatePlan(
   catalog: Record<string, Course>,
   concentrationId?: string,
   graduationProgram?: Program,
+  secondaryProgram?: Program,
 ): { years: YearPlan; requirements: RequirementBlock[] } {
   const plan: YearPlan = JSON.parse(JSON.stringify(EMPTY_YEAR_PLAN));
   const placed = new Set<string>();
@@ -62,6 +63,9 @@ export function autoPopulatePlan(
   if (concentrationId && program.concentrations) {
     const conc = program.concentrations.options.find(c => c.id === concentrationId);
     if (conc) allRules.push(...conc.adds_rules);
+  }
+  if (secondaryProgram) {
+    allRules.push(...secondaryProgram.rules);
   }
 
   // Collect all courses to place

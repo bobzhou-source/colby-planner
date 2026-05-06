@@ -17,7 +17,7 @@ function countSatisfied(rule: Rule, planCourseIds: Set<string>, catalogCourses: 
     const pool = rule.pool || [];
     const satisfied = pool.filter((item: PoolItem) => {
       if (item.type === 'course') return planCourseIds.has(item.course_id);
-      if (item.type === 'sequence') return item.sequence.every(id => planCourseIds.has(id));
+      if (item.type === 'sequence') return item.sequence.every((id: string) => planCourseIds.has(id));
       return false;
     }).length;
     return { done: satisfied >= select, partial: satisfied > 0 && satisfied < select, count: `${satisfied}/${select}` };
@@ -116,7 +116,7 @@ function RuleList({ rules, planCourseIds, catalogCourses }: {
                     );
                   }
                   if (item.type === 'sequence') {
-                    const allSat = item.sequence.every(id => planCourseIds.has(id));
+                    const allSat = item.sequence.every((id: string) => planCourseIds.has(id));
                     return (
                       <div key={i} className="text-[11px] text-gray-500">
                         {allSat ? '✓ ' : '○ '}
@@ -143,11 +143,12 @@ function RuleList({ rules, planCourseIds, catalogCourses }: {
 
 export default function RequirementSidebar() {
   const { data, plans, activePlanIndex, toggleSidebar } = useStore();
-  const [tab, setTab] = useState<'major' | 'graduation'>('major');
+  const [tab, setTab] = useState<'primary' | 'secondary' | 'graduation'>('primary');
   const plan = plans[activePlanIndex];
   if (!plan || !data) return null;
 
   const program = data.programs.find(p => p.id === plan.program_id);
+  const secondary = plan.secondary_program_id ? data.programs.find(p => p.id === plan.secondary_program_id) : null;
   const graduation = data.programs.find(p => p.id === 'colby_graduation');
 
   // Gather all course IDs from plan
@@ -158,11 +159,19 @@ export default function RequirementSidebar() {
     year.spring.forEach((id: string) => planCourseIds.add(id));
   });
 
-  const majorRules = program ? [...program.rules] : [];
+  const primaryRules = program ? [...program.rules] : [];
   if (plan.concentration_id && program?.concentrations) {
     const conc = program.concentrations.options.find(c => c.id === plan.concentration_id);
-    if (conc) majorRules.push(...conc.adds_rules);
+    if (conc) primaryRules.push(...conc.adds_rules);
   }
+
+  const secondaryRules = secondary ? [...secondary.rules] : [];
+
+  const tabs: { key: 'primary' | 'secondary' | 'graduation'; label: string; enabled: boolean }[] = [
+    { key: 'primary', label: program?.name?.replace(/ Major| Minor/g, '') || 'Major', enabled: !!program },
+    { key: 'secondary', label: secondary?.name?.replace(/ Major| Minor/g, '') || '2nd Program', enabled: !!secondary },
+    { key: 'graduation', label: 'Graduation', enabled: !!graduation },
+  ];
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col overflow-hidden shrink-0">
@@ -173,31 +182,27 @@ export default function RequirementSidebar() {
 
       {/* Tabs */}
       <div className="flex border-b border-gray-100">
-        <button
-          onClick={() => setTab('major')}
-          className={`flex-1 py-2 text-xs font-semibold text-center transition-colors ${
-            tab === 'major'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Major
-        </button>
-        <button
-          onClick={() => setTab('graduation')}
-          className={`flex-1 py-2 text-xs font-semibold text-center transition-colors ${
-            tab === 'graduation'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Graduation
-        </button>
+        {tabs.filter(t => t.enabled).map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex-1 py-2 text-xs font-semibold text-center transition-colors truncate px-1 ${
+              tab === t.key
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        {tab === 'major' && program && (
-          <RuleList rules={majorRules} planCourseIds={planCourseIds} catalogCourses={data.catalog.courses} />
+        {tab === 'primary' && program && (
+          <RuleList rules={primaryRules} planCourseIds={planCourseIds} catalogCourses={data.catalog.courses} />
+        )}
+        {tab === 'secondary' && secondary && (
+          <RuleList rules={secondaryRules} planCourseIds={planCourseIds} catalogCourses={data.catalog.courses} />
         )}
         {tab === 'graduation' && graduation && (
           <RuleList rules={graduation.rules} planCourseIds={planCourseIds} catalogCourses={data.catalog.courses} />
