@@ -1,4 +1,5 @@
 import type { Program } from '../types';
+import { getProgramDepartment } from './departments';
 
 function extractCourseIds(program: Program): Set<string> {
   const ids = new Set<string>();
@@ -56,6 +57,13 @@ export function isLikelyForbidden(primary: Program, secondary: Program): boolean
   const pNote = (primary.note || '').toLowerCase();
   const sNote = (secondary.note || '').toLowerCase();
 
+  // Same department — Colby does not allow double majoring within the same department
+  const pDept = getProgramDepartment(primary.id);
+  const sDept = getProgramDepartment(secondary.id);
+  if (pDept && sDept && pDept === sDept) {
+    return true;
+  }
+
   // Same subject major + minor (e.g., CS major + CS minor)
   const pSubject = pName.replace(/ major| minor/g, '').trim();
   const sSubject = sName.replace(/ major| minor/g, '').trim();
@@ -77,7 +85,6 @@ export function isLikelyForbidden(primary: Program, secondary: Program): boolean
   ];
   for (const phrase of forbiddenPhrases) {
     if (combinedNote.includes(phrase)) {
-      // Check if the note specifically mentions the secondary subject
       if (combinedNote.includes(sSubject) || combinedNote.includes(pSubject)) {
         return true;
       }

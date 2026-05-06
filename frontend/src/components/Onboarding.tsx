@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Program, Plan, Course } from '../types';
 import { createEmptyPlan } from '../types';
 import { autoPopulatePlan } from '../utils/autoPopulate';
-import { DEPARTMENTS } from '../utils/departments';
+import { DEPARTMENTS, getProgramDepartment } from '../utils/departments';
 import { findCompatiblePrograms, isLikelyForbidden } from '../utils/programOverlap';
 
 interface Props {
@@ -164,7 +164,12 @@ export default function Onboarding({ onFinish, programs, catalog, onCreatePlans 
           {/* Department grid */}
           {(step === 'dept' || step === 'secondary_dept') && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
-              {DEPARTMENTS.map(d => (
+              {DEPARTMENTS.filter(d => {
+                if (step === 'dept') return true;
+                // Filter out same department as primary for secondary selection
+                const primaryDept = getProgramDepartment(primaryMajor || '');
+                return d.name !== primaryDept;
+              }).map(d => (
                 <button
                   key={d.name}
                   onClick={() => step === 'dept' ? handleDept(d.name) : handleSecondaryDept(d.name)}
@@ -242,7 +247,13 @@ export default function Onboarding({ onFinish, programs, catalog, onCreatePlans 
                   </div>
                   <div className="space-y-1.5 max-h-48 overflow-y-auto">
                     {(() => {
-                      const matches = findCompatiblePrograms(primaryProgram, programs);
+                      const primaryDept = getProgramDepartment(primaryProgram.id);
+                      const eligiblePrograms = programs.filter(p => {
+                        if (p.id === primaryProgram.id) return false;
+                        const pDept = getProgramDepartment(p.id);
+                        return pDept !== primaryDept;
+                      });
+                      const matches = findCompatiblePrograms(primaryProgram, eligiblePrograms);
                       const top = matches.slice(0, 6);
                       if (top.length === 0) {
                         return <div className="text-xs text-gray-400">No strong overlaps found. You can still browse all programs.</div>;

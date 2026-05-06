@@ -37,3 +37,10 @@ export const DEPARTMENTS: { name: string; programIds: string[] }[] = [
   { name: 'Statistics', programIds: ['statistics_major'] },
   { name: "Women's, Gender, and Sexuality Studies", programIds: ['wgss_major'] },
 ];
+
+export function getProgramDepartment(programId: string): string | null {
+  for (const dept of DEPARTMENTS) {
+    if (dept.programIds.includes(programId)) return dept.name;
+  }
+  return null;
+}
